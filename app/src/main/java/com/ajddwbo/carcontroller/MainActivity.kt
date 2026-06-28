@@ -33,13 +33,18 @@ import kotlin.math.min
 class MainActivity : Activity() {
     private val sppUuid: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
     private val controls = listOf(
-        Control("F", "前进", true, 150, 30),
-        Control("L", "左转", true, 45, 145),
-        Control("S", "停止", false, 150, 145),
-        Control("R", "右转", true, 255, 145),
-        Control("B", "后退", true, 150, 260),
-        Control("A", "循迹", false, 45, 390),
-        Control("M", "音乐", false, 255, 390)
+        Control("F", "前进", true, 135, 30),
+        Control("L", "左转", true, 30, 30),
+        Control("S", "停止", false, 135, 145),
+        Control("R", "右转", true, 240, 30),
+        Control("B", "后退", true, 135, 260),
+        Control("A", "循迹", false, 30, 390),
+        Control("M", "音乐", false, 240, 390),
+        Control("Q", "前进左转", true, 30, 145),
+        Control("E", "前进右转", true, 240, 145),
+        Control("+", "加速", false, 240, 310),
+        Control("-", "减速", false, 30, 310),
+        Control("0", "速度归零", false, 135, 350),
     )
 
     private lateinit var statusText: TextView
