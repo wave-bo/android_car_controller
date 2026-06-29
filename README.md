@@ -2,6 +2,10 @@
 
 这是一个用于 8051 智能小车的 Android 蓝牙控制软件。手机通过经典蓝牙 SPP 连接 HC-05 / HC-06 这类串口蓝牙模块，然后发送单字节 ASCII 指令给单片机。
 
+## 软件界面
+
+![Android Car Controller 软件界面](docs/images/app-screen.jpg)
+
 ## 功能
 
 - 连接手机系统里已经配对的经典蓝牙串口设备。
