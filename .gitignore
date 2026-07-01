@@ -13,6 +13,7 @@ local.properties
 *.ap_
 *.aab
 *.dex
+app/release/
 
 # Kotlin / Java build caches
 *.class
@@ -23,6 +24,11 @@ local.properties
 # Keystore and signing files
 *.jks
 *.keystore
+*.p12
+*.pem
+*.key
+keystore.properties
+signing.properties
 
 # Logs
 *.log

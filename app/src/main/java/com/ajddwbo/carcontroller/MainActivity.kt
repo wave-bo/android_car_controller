@@ -29,22 +29,27 @@ import java.util.UUID
 import kotlin.concurrent.thread
 import kotlin.math.max
 import kotlin.math.min
-
+import kotlin.math.abs
+import android.app.AlertDialog
+import android.widget.EditText
+import org.json.JSONArray
+import org.json.JSONObject
+import android.text.InputFilter
 class MainActivity : Activity() {
     private val sppUuid: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
-    private val controls = listOf(
-        Control("F", "前进", true, 135, 30),
-        Control("L", "左转", true, 30, 30),
-        Control("S", "停止", false, 135, 145),
-        Control("R", "右转", true, 240, 30),
-        Control("B", "后退", true, 135, 260),
-        Control("A", "循迹", false, 30, 390),
-        Control("M", "音乐", false, 240, 390),
-        Control("Q", "前进左转", true, 30, 145),
-        Control("E", "前进右转", true, 240, 145),
-        Control("+", "加速", false, 240, 310),
-        Control("-", "减速", false, 30, 310),
-        Control("0", "速度归零", false, 135, 350),
+    private val defaultControls  = listOf(
+        Control("f","F", "前进", true, 135, 30),
+        Control("l","L", "左转", true, 30, 30),
+        Control("s","S", "停止", false, 135, 145),
+        Control("r","R", "右转", true, 240, 30),
+        Control("b","B", "后退", true, 135, 260),
+        Control("a","A", "循迹", false, 30, 390),
+        Control("m","M", "音乐", false, 240, 390),
+        Control("q","Q", "前进左转", true, 30, 145),
+        Control("e","E", "前进右转", true, 240, 145),
+        Control("plus","+", "加速", false, 240, 310),
+        Control("minus","-", "减速", false, 30, 310),
+        Control("zero","0", "速度归零", false, 135, 350),
     )
 
     private lateinit var statusText: TextView
@@ -53,6 +58,7 @@ class MainActivity : Activity() {
     private lateinit var panel: FrameLayout
     private lateinit var sizeSeek: SeekBar
 
+    private val controls = mutableListOf<Control>()
     private val buttons = mutableMapOf<String, Button>()
     private val devices = mutableListOf<BluetoothDevice>()
     private var selectedDevice: BluetoothDevice? = null
@@ -97,6 +103,9 @@ class MainActivity : Activity() {
         topButtons.addView(makeActionButton("刷新") { loadPairedDevices() }, weightParams())
         topButtons.addView(makeActionButton("连接") { connectSelectedDevice() }, weightParams())
         topButtons.addView(makeActionButton("断开") { closeConnection() }, weightParams())
+        topButtons.addView(makeActionButton("新增按键") {
+            showEditControlDialog(null)
+        }, weightParams())
         root.addView(topButtons, LinearLayout.LayoutParams(-1, dp(52)))
 
         editMode = CheckBox(this).apply {
@@ -127,7 +136,7 @@ class MainActivity : Activity() {
         sizeRow.addView(sizeSeek, LinearLayout.LayoutParams(0, -2, 1f))
         root.addView(sizeRow, LinearLayout.LayoutParams(-1, dp(48)))
 
-        root.addView(makeActionButton("恢复默认按钮位置") {
+        root.addView(makeActionButton("恢复默认按键") {
             resetLayout()
         }, LinearLayout.LayoutParams(-1, dp(46)))
 
@@ -136,8 +145,9 @@ class MainActivity : Activity() {
         }
         root.addView(panel, LinearLayout.LayoutParams(-1, dp(520)))
 
-        controls.forEach { addControlButton(it) }
-
+        controls.clear()
+        controls.addAll(loadControls())
+        renderControls()
         val scroll = ScrollView(this)
         scroll.addView(root)
         setContentView(scroll)
@@ -164,12 +174,12 @@ class MainActivity : Activity() {
             setTextColor(Color.WHITE)
             setBackgroundResource(com.ajddwbo.carcontroller.R.drawable.control_button)
         }
-        buttons[control.command] = button
+        buttons[control.id] = button
 
         val size = buttonSizePx()
         panel.addView(button, FrameLayout.LayoutParams(size, size))
-        button.x = prefs.getFloat("${control.command}_x", dp(control.defaultX).toFloat())
-        button.y = prefs.getFloat("${control.command}_y", dp(control.defaultY).toFloat())
+        button.x = dp(control.x).toFloat()
+        button.y = dp(control.y).toFloat()
 
         installButtonTouch(button, control)
     }
@@ -179,6 +189,7 @@ class MainActivity : Activity() {
         var downY = 0f
         var startX = 0f
         var startY = 0f
+        var moved = false
         var sentDown = false
 
         button.setOnTouchListener { view, event ->
@@ -189,22 +200,42 @@ class MainActivity : Activity() {
                         downY = event.rawY
                         startX = view.x
                         startY = view.y
+                        moved = false
                         true
                     }
 
                     MotionEvent.ACTION_MOVE -> {
-                        val nextX = startX + event.rawX - downX
-                        val nextY = startY + event.rawY - downY
-                        view.x = clamp(nextX, 0f, (panel.width - view.width).toFloat())
-                        view.y = clamp(nextY, 0f, (panel.height - view.height).toFloat())
+                        val deltaX = event.rawX - downX
+                        val deltaY = event.rawY - downY
+                        if (abs(deltaX) > dp(4) || abs(deltaY) > dp(4)) {
+                            moved = true
+                        }
+                        if (moved) {
+                            val nextX = startX + deltaX
+                            val nextY = startY + deltaY
+                            view.x = clamp(nextX, 0f, (panel.width - view.width).toFloat())
+                            view.y = clamp(nextY, 0f, (panel.height - view.height).toFloat())
+                        }
                         true
                     }
 
-                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                        prefs.edit()
-                            .putFloat("${control.command}_x", view.x)
-                            .putFloat("${control.command}_y", view.y)
-                            .apply()
+                    MotionEvent.ACTION_UP -> {
+                        if (moved) {
+                            control.x = (view.x / resources.displayMetrics.density).toInt()
+                            control.y = (view.y / resources.displayMetrics.density).toInt()
+                            saveControls()
+                        } else {
+                            showEditControlDialog(control)
+                        }
+                        true
+                    }
+
+                    MotionEvent.ACTION_CANCEL -> {
+                        if (moved) {
+                            control.x = (view.x / resources.displayMetrics.density).toInt()
+                            control.y = (view.y / resources.displayMetrics.density).toInt()
+                            saveControls()
+                        }
                         true
                     }
 
@@ -232,7 +263,6 @@ class MainActivity : Activity() {
             }
         }
     }
-
     private fun resizeButtons() {
         val size = buttonSizePx()
         buttons.values.forEach { button ->
@@ -241,21 +271,93 @@ class MainActivity : Activity() {
     }
 
     private fun resetLayout() {
-        val editor = prefs.edit()
-        controls.forEach { control ->
-            editor.remove("${control.command}_x")
-            editor.remove("${control.command}_y")
-        }
-        editor.apply()
+        controls.clear()
+        controls.addAll(defaultControls.map { it.copy() })
 
-        controls.forEach { control ->
-            buttons[control.command]?.apply {
-                x = dp(control.defaultX).toFloat()
-                y = dp(control.defaultY).toFloat()
+        saveControls()
+        renderControls()
+    }
+    private fun showEditControlDialog(control: Control?) {
+        val isNew = control == null
+
+        val labelInput = EditText(this).apply {
+            hint = "按钮文字，例如 前进"
+            setText(control?.label ?: "")
+        }
+
+        val commandInput = EditText(this).apply {
+            hint = "发送字符，例如 F"
+            setText(control?.command ?: "")
+            filters = arrayOf(InputFilter.LengthFilter(1))
+        }
+
+        val momentaryCheck = CheckBox(this).apply {
+            text = "点动按钮：按下发送，松开发 S"
+            isChecked = control?.momentary ?: false
+        }
+
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(12), dp(20), dp(4))
+            addView(labelInput)
+            addView(commandInput)
+            addView(momentaryCheck)
+        }
+
+        val builder = AlertDialog.Builder(this)
+            .setTitle(if (isNew) "新增按键" else "编辑按键")
+            .setView(layout)
+            .setPositiveButton("保存", null)
+            .setNegativeButton("取消", null)
+
+        if (!isNew) {
+            builder.setNeutralButton("删除") { _, _ ->
+                controls.remove(control)
+                saveControls()
+                renderControls()
             }
         }
-    }
 
+        val dialog = builder.create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val label = labelInput.text.toString().trim()
+                val command = commandInput.text.toString().trim()
+
+                if (label.isEmpty()) {
+                    toast("按钮文字不能为空")
+                    return@setOnClickListener
+                }
+
+                if (!isValidCommand(command)) {
+                    toast("发送字符必须是一个英文/数字/符号")
+                    return@setOnClickListener
+                }
+
+                if (isNew) {
+                    controls.add(
+                        Control(
+                            id = System.currentTimeMillis().toString(),
+                            command = command,
+                            label = label,
+                            momentary = momentaryCheck.isChecked,
+                            x = 135,
+                            y = 430
+                        )
+                    )
+                } else {
+                    control!!.label = label
+                    control.command = command
+                    control.momentary = momentaryCheck.isChecked
+                }
+
+                saveControls()
+                renderControls()
+                dialog.dismiss()
+            }
+        }
+        dialog.show()
+    }
     private fun ensureBluetoothPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
             checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED
@@ -391,6 +493,10 @@ class MainActivity : Activity() {
     private fun clamp(value: Float, minValue: Float, maxValue: Float): Float {
         return max(minValue, min(value, maxValue))
     }
+    private fun isValidCommand(command: String): Boolean {
+        return command.length == 1 && command[0].code in 32..126
+    }
+
 
     private fun toast(message: String) {
         runOnUiThread {
@@ -398,11 +504,72 @@ class MainActivity : Activity() {
         }
     }
 
+
+    private fun loadControls(): List<Control> {
+        val jsonText = prefs.getString("controls_json", null)
+
+        if (jsonText.isNullOrBlank()) {
+            return defaultControls.map { it.copy() }
+        }
+
+        return try {
+            val array = JSONArray(jsonText)
+            val result = mutableListOf<Control>()
+
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+
+                result.add(
+                    Control(
+                        id = obj.getString("id"),
+                        command = obj.getString("command"),
+                        label = obj.getString("label"),
+                        momentary = obj.getBoolean("momentary"),
+                        x = obj.getInt("x"),
+                        y = obj.getInt("y")
+                    )
+                )
+            }
+
+            result
+        } catch (_: Exception) {
+            defaultControls.map { it.copy() }
+        }
+    }
+    private fun renderControls() {
+        panel.removeAllViews()
+        buttons.clear()
+
+        controls.forEach { control ->
+            addControlButton(control)
+        }
+    }
+    private fun saveControls() {
+        val array = JSONArray()
+
+        controls.forEach { control ->
+            val obj = JSONObject()
+
+            obj.put("id", control.id)
+            obj.put("command", control.command)
+            obj.put("label", control.label)
+            obj.put("momentary", control.momentary)
+            obj.put("x", control.x)
+            obj.put("y", control.y)
+
+            array.put(obj)
+        }
+
+        prefs.edit()
+            .putString("controls_json", array.toString())
+            .apply()
+    }
     private data class Control(
-        val command: String,
-        val label: String,
-        val momentary: Boolean,
-        val defaultX: Int,
-        val defaultY: Int
+        val id: String,
+        var command: String,
+        var label: String,
+        var momentary: Boolean,
+        var x: Int,
+        var y: Int
     )
 }

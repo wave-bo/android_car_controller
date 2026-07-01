@@ -10,18 +10,11 @@
 
 - 连接手机系统里已经配对的经典蓝牙串口设备。
 - 通过 Android 按钮控制小车运动、循迹、音乐和速度。
-- 方向类按钮是点动控制：
-  - 按下发送对应命令。
-  - 松开发送 `S` 停止。
-- 功能类按钮按下时只发送一次：
-  - 停止
-  - 循迹
-  - 音乐
-  - 加速
-  - 减速
-  - 恢复默认速度
-- 支持编辑按钮位置和调整按钮大小。
-- 按钮布局会保存在手机本地。
+- 方向类按钮是点动控制：按下发送对应命令，松开发送 `S` 停止。
+- 功能类按钮按下时只发送一次，例如停止、循迹、音乐、加速、减速、速度归零。
+- 支持编辑按钮布局、拖动按钮位置、调整按钮大小。
+- 支持新增、编辑、删除按钮，并配置按钮文字、发送字符和是否点动。
+- 按钮配置会保存在手机本地。
 
 ## 项目结构
 
@@ -32,10 +25,11 @@
 |   `-- src/main/
 |       |-- AndroidManifest.xml   蓝牙权限和 app 入口
 |       |-- java/com/ajddwbo/carcontroller/MainActivity.kt
-|       |                         主界面、蓝牙连接、按钮发送逻辑
+|       |                         主界面、蓝牙连接、按钮配置、按钮发送逻辑
 |       `-- res/                  字符串、样式、按钮背景等资源
 |-- ref/
 |   `-- main.c                    8051 单片机参考代码
+|-- docs/images/app-screen.jpg    app 界面截图
 |-- build.gradle.kts              项目级 Gradle 配置
 |-- settings.gradle.kts           Gradle 模块配置
 |-- gradle.properties             Gradle 属性
@@ -73,7 +67,15 @@ Settings -> Build, Execution, Deployment -> Build Tools -> Gradle -> Gradle JDK
 6. 点击 Run 安装到手机。
 7. 在 app 里点击“刷新”，选择已配对蓝牙模块，点击“连接”。
 
-Android Studio Run 安装到手机后，拔掉 USB 也可以继续使用。Debug 版本适合自己测试和使用；如果要发给别人安装，可以再生成正式签名 APK。
+Android Studio Run 安装到手机后，拔掉 USB 也可以继续使用。Debug 版本适合自己测试和使用。
+
+
+1. 打开手机蓝牙。
+2. 在系统蓝牙里先配对小车蓝牙模块。
+3. 打开 app，点击“刷新”。
+4. 选择蓝牙设备，点击“连接”。
+5. 按控制按钮发送命令。
+
 
 ## 蓝牙协议
 
@@ -100,28 +102,36 @@ Android 端每次只发送一个 ASCII 字符。单片机端在 `ref/main.c` 中
 | `-` | 减速 | 增加直行/转向暂停时间，降低速度 |
 | `0` | 速度归零 | 恢复默认速度参数 |
 
-## 按钮布局
+新增按钮时，Android 可以发送你填写的字符，但单片机必须在 `ref/main.c` 里支持这个字符，否则小车不会有动作。
 
-按钮定义在 `MainActivity.kt` 的 `controls` 列表中：
+## 按钮配置
+
+默认按钮定义在 `MainActivity.kt` 的 `defaultControls` 列表中：
 
 ```kotlin
-Control("F", "前进", true, 135, 30)
+Control("f", "F", "前进", true, 135, 30)
 ```
 
 参数含义：
 
 ```text
-Control("发送字符", "按钮文字", 是否点动, 默认 X, 默认 Y)
+Control("按钮唯一 id", "发送字符", "按钮文字", 是否点动, 默认 X, 默认 Y)
 ```
 
 `true` 表示这是点动按钮：按下发送对应命令，松开发送 `S`。  
 `false` 表示这是一次性按钮：按下只发送一次命令，松开不额外发送 `S`。
 
-如果修改了 `Control(..., x, y)` 但手机上位置没有变化，通常是因为 app 已经保存过旧布局。可以在 app 里点击“恢复默认按钮位置”，或者清除 app 存储数据后再运行。
+app 会把按钮列表保存成 JSON，保存内容包括：
+
+```text
+id, command, label, momentary, x, y
+```
+
+所以用户在手机里新增、删除、编辑、拖动按钮后，关闭 app 再打开也会保留。点击“恢复默认按键”会清空当前自定义配置，并恢复 `defaultControls`。
 
 ## 主要代码位置
 
-- 修改界面和按钮：`app/src/main/java/com/ajddwbo/carcontroller/MainActivity.kt`
+- 修改界面、按钮、蓝牙逻辑：`app/src/main/java/com/ajddwbo/carcontroller/MainActivity.kt`
 - 修改按钮样式：`app/src/main/res/drawable/control_button.xml`
 - 修改 app 名称：`app/src/main/res/values/strings.xml`
 - 修改蓝牙权限：`app/src/main/AndroidManifest.xml`
@@ -145,7 +155,7 @@ bluetooth_cmd_ready = 1;
 
 ## GitHub 备份说明
 
-本仓库应该上传源码、Gradle wrapper、`ref/main.c` 和文档。
+本仓库应该上传源码、Gradle wrapper、`ref/main.c`、截图和文档。
 
 不要上传以下内容：
 
@@ -153,6 +163,8 @@ bluetooth_cmd_ready = 1;
 - `.gradle/`
 - `.idea/`
 - `local.properties`
+- `app/release/`
 - APK、AAB、日志、签名文件
+- `.jks`、`.keystore`、`keystore.properties`、`signing.properties`
 
 这些内容已经写入 `.gitignore`。
